@@ -1,0 +1,6 @@
+event,spare,site,returned_part,term,action,day
+Z1,S1,south,P12,W3,reserved,43
+Z2,S1,south,P12,W3,dispatched,45
+Z3,S3,north,P21,W1,requested,46
+Z4,S2,south,P18,W3,awaiting_inspection,47
+Z5,S1,south,P12,W3,return_confirmed,55

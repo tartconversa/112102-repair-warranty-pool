@@ -1,0 +1,6 @@
+spare,site,approval,known_day
+S1,north,approved,40
+S1,south,approved,40
+S2,south,approved,40
+S2,north,inspection_required,40
+S3,north,approved,40

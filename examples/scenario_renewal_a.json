@@ -1,0 +1,58 @@
+{
+  "name": "方案A-加保L1",
+  "description": "在现行条款外，把两个站点的 V2/L1 纳入先行替换覆盖，示范续约比较",
+  "horizon_days": 28,
+  "usage_multiplier": 1.2,
+  "terms": [
+    {
+      "term": "W1",
+      "vendor": "V1",
+      "lot": "L1",
+      "supported_site": "north",
+      "return_days": 5,
+      "unit_cost": 190,
+      "advance_limit": 2,
+      "enabled": 1
+    },
+    {
+      "term": "W2",
+      "vendor": "V1",
+      "lot": "L1",
+      "supported_site": "south",
+      "return_days": 5,
+      "unit_cost": 190,
+      "advance_limit": 2,
+      "enabled": 1
+    },
+    {
+      "term": "W3",
+      "vendor": "V2",
+      "lot": "L2",
+      "supported_site": "south",
+      "return_days": 8,
+      "unit_cost": 220,
+      "advance_limit": 1,
+      "enabled": 1
+    },
+    {
+      "term": "W4",
+      "vendor": "V2",
+      "lot": "L1",
+      "supported_site": "north",
+      "return_days": 7,
+      "unit_cost": 200,
+      "advance_limit": 2,
+      "enabled": 1
+    },
+    {
+      "term": "W5",
+      "vendor": "V2",
+      "lot": "L1",
+      "supported_site": "south",
+      "return_days": 7,
+      "unit_cost": 200,
+      "advance_limit": 2,
+      "enabled": 1
+    }
+  ]
+}

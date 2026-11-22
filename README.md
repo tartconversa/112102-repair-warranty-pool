@@ -1,26 +1,121 @@
 # 低空服务部件的停用风险与保修备件调配
 
-零部件在役、检查、保修条款及备用件交接的合成资料。 所有标识、金额、地名和观察值均为合成数据。
+零部件在役、检查、保修条款及备用件交接的合成资料，以及一个**仅依赖 Python
+3.14 标准库**的本地分析应用。所有标识、金额、地名和观察值均为合成数据。
 
-## 来源资料
+## 要解决的问题
 
-- `sources/service_intervals.csv`
-- `sources/checks.csv`
-- `sources/lot_corrections.csv`
-- `sources/warranty_terms.csv`
-- `sources/interchange.csv`
-- `sources/replacement_events.csv`
+过去按**送修日期**统计零部件故障，并据此决定备件合同续签。这个口径有两个
+结构性偏差：
 
-service_intervals 每行是一段观察窗，usage_hours 是窗内累计使用小时，observed_to 是该站观察结束。ending 为结束原因；planned 表示计划拆换，transfer 表示换站使连续观察中断，in_service 表示仍在役。checks 的 inspection_day 早于 known_day 时，检查结论是补交的。
+1. 定检更严的站点更早发现磨损，检得勤的供应商在送修计数上看起来更差；
+2. 整机换站会带走尚未观察到结果的部件，送修顺序无法反映真实故障时间。
 
-lot_corrections 为供应方后补的实物归属凭证。warranty_terms 的 return_days 从发出替换件起算，advance_limit 是条款下尚未闭环的替换额度，unit_cost 为合成货币单位。
+应用改用**使用小时尺度的生存分析**，并把每条结论锚定在“当时已经可知”的
+证据上，回答四类问题：
 
-interchange 中同一 spare 可在多个站使用，但表示同一个实物。replacement_events 记录申请、预留、调出、待复验及原件退回的回执。
+- 各部件在相当使用水平与检查覆盖下的停用风险（故障、在役、计划拆换、
+  换站中断、不能归属，五类分桶，互不混淆）；
+- 保修条款能兑现多少先行替换额度、哪些链将按成本采购、共池备件当前能调
+  出多少；
+- 不同用量假设下各站点/批次的备件需求，以及续约方案之间的并排比较；
+- 后来补交的拆检结论、批号凭证或签收回执如何改变了原建议，以及目前仍可
+  采取什么措施。
 
-## 本地检查
+## 来源资料（`sources/`）
 
-使用 Python 3.14，仅需标准库。在项目目录执行以下命令检查输入表结构、事件引用和基础记录覆盖。
+| 文件 | 含义 |
+| --- | --- |
+| `service_intervals.csv` | 每行一段观察窗；`usage_hours` 为窗内累计使用小时，`observed_to` 为该站观察结束；`ending` ∈ `in_service`/`planned`/`transfer`/`withdrawn` |
+| `checks.csv` | 检查结果；`inspection_day < known_day` 时结论是补交的，补交前不可用于分析 |
+| `lot_corrections.csv` | 供应方后补的实物归属凭证（改变风险归属、保修资格与备件可用性） |
+| `warranty_terms.csv` | `return_days` 从**发出替换件**起算；`advance_limit` 是条款下尚未闭环的额度；`unit_cost` 为合成货币单位 |
+| `interchange.csv` | 同一 `spare` 可在多站点使用但代表同一实物；`inspection_required` 不算放行 |
+| `replacement_events.csv` | 申请、预留、调出、待复验、原件退回的回执时间线 |
+
+## 分析口径（每条数字可核对）
+
+1. **不用送修顺序构造故障时间**。故障只承认检查结论，且结论必须在分析时点
+   之前可知（`known_day <= as_of`）。
+2. 故障是**区间删失**：事件时间取 failed 检查的折算小时（区间上沿），下沿
+   取上一次 clear 检查，保留区间而非伪造单点。
+3. 右删失分三档：在役、计划拆换、换站中断；已停用但拿不到故障证据的件、
+   以及批号未明且无补录凭证的件，进**不能归属**桶，不计故障也不静默丢弃。
+4. 观察窗随时间逐步可见；未到 `observed_to` 的窗按截断处理，结束原因在当时
+   不可知，一律按在役右删失。
+5. 供应商比较先按批次/站点分层，再用合并站点暴露权重做直接标化；朴素送修
+   计数仍并列展示，让偏差本身可见。
+6. 保修资格要求供应商、批次、站点三项与条款一致，且原件已确认交回、实物
+   归属可知；逾期交回按成本采购。额度只被**未闭环链**占用，交回确认即释放。
+7. 共池备件在“未获放行（待复验）”或“实物被未闭环链占用”时都不计入可
+   兑现数量。已确认调出的事实不随刷新取回；未确认的申请/预留每次按最新
+   证据重核。
+
+## 快速开始
+
+```sh
+# 1. 导入来源（幂等；重复导入跳过未变化文件，--force 强制整批替换）
+python -m app.cli import --sources sources
+
+# 2. 风险分析（默认时点 = 库内最大已知日，可用 --as-of 切到任意历史时点）
+python -m app.cli risk --as-of 47 --parts
+
+# 3. 保修资格、先行额度、共池备件与费用敞口
+python -m app.cli warranty
+
+# 4. 不同用量假设下的备件需求
+python -m app.cli demand --horizon 28 --multiplier 1.2
+
+# 5. 续约方案：基线在首次导入时自动建立；也可用 JSON 新建方案后比较
+python -m app.cli scenario create examples/scenario_renewal_a.json
+python -m app.cli scenario compare
+
+# 6. 登记本地替换交接（状态机约束，不能跳过调出直接确认交回、不能倒填）
+python -m app.cli register-event --event Z6 --spare S3 --site north \
+    --part P21 --term W1 --action dispatched --day 56
+python -m app.cli register-approval --spare S2 --site north \
+    --approval approved --day 56 --note "复验合格"
+
+# 7. 解释两个时点之间的建议变化（证据 → 部件 → 替换链 → 备件 → 待办）
+python -m app.cli explain 47 55
+
+# 8. 本地网页应用（http://127.0.0.1:8000/）
+python -m app.cli web
+```
+
+数据库默认写在 `data/app.db`（已在 `.gitignore`），可用全局参数 `--db`
+改到任意位置。本地登记与方案保存在独立表中，重新导入来源不会清空。
+
+### 网页界面
+
+- **总览**：五类状态分桶、批次事件率与置信区间、站点检查覆盖、条款额度与
+  费用敞口、朴素口径偏差对照；
+- **部件风险**：逐件生存记录、批次归属来源、故障区间、KM 生存阶梯；
+- **保修与备件**：替换链时间线、保修结论与依据、额度占用、共池可兑现状态、
+  未确认计划重核；
+- **备件需求 / 续约方案 / 时点对比 / 交接登记**：与 CLI 同一套计算内核。
+
+## 应用结构（`app/`）
+
+| 模块 | 职责 |
+| --- | --- |
+| `store.py` | SQLite 建表、迁移与来源/本地状态隔离 |
+| `importer.py` | 幂等导入、表头/枚举/外键/数值校验、哈希去重、整批事务回滚 |
+| `clock.py` | 按已知日切片的时点知识视图（防结论穿越）、使用小时折算 |
+| `risk.py` | 逐件分桶、区间删失、分层事件率与泊松置信区间、KM/Nelson–Aalen、直接标化、需求投影 |
+| `warranty.py` | 替换链状态机、保修资格、先行额度、共池备件、费用敞口、计划重核 |
+| `scenarios.py` | 续约方案建模、覆盖/成本测算、额度预警、并排比较 |
+| `explain.py` | 两个时点的证据到达与结论变化解释、当前可采取措施 |
+| `records.py` | 本地交接与复验放行登记（状态机校验）、审计快照 |
+| `web.py` / `cli.py` | 本地网页与命令行入口 |
+
+## 测试
 
 ```sh
 python -m unittest discover -s tests -v
 ```
+
+- `tests/test_sources.py`：来源表结构、引用与基础覆盖契约（随资料提供）；
+- `tests/test_app.py`：导入幂等与回滚、时点截断、补交证据隐藏、五类分桶、
+  区间删失、额度只计未闭环链、共池阻塞、登记状态机、方案比较与时点对比，
+  共 30+ 个用例，全部使用临时数据库，不修改仓库内来源。
